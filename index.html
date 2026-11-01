@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Ночная улица</title>
+<style>
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #100e12;
+    color: #d8d0c6;
+    font: 15px/1.4 "Iowan Old Style", Palatino, Georgia, serif;
+  }
+  body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+  }
+  .stage {
+    width: min(96vw, calc(86vh * 16 / 9));
+    background: #000;
+  }
+  canvas {
+    display: block;
+    width: 100%;
+    height: auto;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+  }
+  p { margin: 0; letter-spacing: 0.01em; }
+</style>
+</head>
+<body>
+  <div class="stage"><canvas id="screen" width="320" height="180"></canvas></div>
+  <p id="hint">Стрелки - идти. Пробел - пауза.</p>
+  <script src="pixel-engine.js"></script>
+  <script>
+    const px = Pixel.mount(document.getElementById("screen"), 320, 180);
+    const hint = document.getElementById("hint");
+    const GROUND = 116;
+    const hex = Pixel.hex;
+
+    const sky = [
+      [10, 16, 36],
+      [14, 22, 46],
+      [20, 30, 56],
+      [28, 40, 68],
+      [36, 50, 80],
+    ];
+    const moonRamp = Pixel.ramp("#f0d7a4", { steps: 5, shadowHue: 228, lightHue: 48 });
+    const lampRamp = Pixel.ramp("#ffc45a", { steps: 5, shadowHue: 28, lightHue: 52 });
+    const wall = [58, 48, 56];
+    const roof = [92, 42, 52];
+    const eave = [36, 24, 32];
+    const glass = [255, 196, 120];
+    const glassHi = [255, 228, 176];
+    const bar = [42, 28, 24];
+    const door = [32, 24, 28];
+    const hillL = [18, 32, 48];
+    const hillR = [14, 26, 42];
+    const street = [32, 28, 40];
+    const stone = [44, 38, 50];
+    const water = [16, 30, 56];
+    const waterHi = [36, 54, 86];
+    const pole = [58, 52, 64];
+    const poleHi = [92, 84, 98];
+    const ink = [36, 22, 44];
+
+    const colors = {
+      k: hex("#f4eee4"),
+      p: hex("#e23d3d"),
+      s: hex("#f0c2a4"),
+      e: hex("#1a1218"),
+      h: hex("#f7f2e8"),
+      r: hex("#d04040"),
+    };
+
+    function spr(rows) {
+      return Pixel.sprite(rows, colors);
+    }
+
+    const stand = spr([
+      "................",
+      ".....kkkkkk.....",
+      "....pkkkkkkk....",
+      "....kssssssk....",
+      "....kse.esk.....",
+      "....kssssssk....",
+      ".....ssssss.....",
+      "....hhhhhhhh....",
+      "...hhhhhhhhhh...",
+      "...hhhhhhhhhh...",
+      "...hh......hh...",
+      "....h......h....",
+      "....rr....rr....",
+      "...rrr....rrr...",
+    ]);
+    const stepA = spr([
+      "................",
+      ".....kkkkkk.....",
+      "....pkkkkkkk....",
+      "....kssssssk....",
+      "....kse.esk.....",
+      "....kssssssk....",
+      ".....ssssss.....",
+      "....hhhhhhhh....",
+      "...hhhhhhhhhh...",
+      "...hhhhhhhhhh...",
+      "...hh......hh...",
+      "....rr....rr....",
+      "...rrr....rrr...",
+      "..rrr......rrr..",
+    ]);
+    const stepB = spr([
+      "................",
+      ".....kkkkkk.....",
+      "....pkkkkkkk....",
+      "....kssssssk....",
+      "....kse.esk.....",
+      "....kssssssk....",
+      ".....ssssss.....",
+      "....hhhhhhhh....",
+      "...hhhhhhhhhh...",
+      "...hhhhhhhhhh...",
+      "...hh......hh...",
+      "...rr......rr...",
+      "..rrr......rrr..",
+      "...rrr....rrr...",
+    ]);
+
+    const stars = [12, 18, 40, 28, 96, 14, 140, 26, 188, 16, 230, 20, 304, 22, 270, 34];
+
+    let x = 150;
+    let walk = 0;
+    let held = false;
+    let paused = false;
+    let spaceWas = false;
+
+    function puddle(cx, cy, rx, ry) {
+      return function (px0, py0) {
+        const nx = (px0 - cx) / rx;
+        const ny = (py0 - cy) / ry;
+        return nx * nx + ny * ny <= 1;
+      };
+    }
+
+    function frame() {
+      px.cls([6, 8, 16]);
+      px.bands(0, 0, 320, GROUND, sky);
+
+      for (let i = 0; i < stars.length; i += 2) {
+        px.plot(stars[i], stars[i + 1], [210, 206, 190]);
+        px.plot(stars[i] + 1, stars[i + 1], [150, 146, 132]);
+      }
+
+      px.orb(70, 34, 12, moonRamp, {
+        outline: "broken",
+        light: { x: -0.8, y: -0.35 },
+        ink: [70, 64, 78],
+      });
+
+      px.tri(0, GROUND, 86, 78, 168, GROUND, hillL);
+      px.tri(150, GROUND, 250, 92, 330, GROUND, hillR);
+
+      px.rect(0, GROUND, 320, 180 - GROUND, street);
+      px.ellipse(48, 142, 8, 3, stone);
+      px.ellipse(96, 158, 6, 2, stone);
+      px.ellipse(196, 146, 7, 3, stone);
+
+      px.tri(16, 92, 62, 54, 118, 92, roof);
+      px.rect(26, 92, 82, GROUND - 92, wall);
+      px.rect(26, 91, 82, 2, eave);
+      px.rect(40, 100, 18, 12, glass);
+      px.plot(42, 102, glassHi);
+      px.plot(43, 102, glassHi);
+      px.rect(47, 100, 2, 12, bar);
+      px.rect(40, 105, 18, 2, bar);
+      px.rect(78, 100, 14, GROUND - 100, door);
+      px.rect(96, 98, 8, 7, [24, 20, 28]);
+
+      px.ellipse(150, 126, 30, 12, water);
+      px.ellipse(150, 122, 14, 2, waterHi);
+      px.ellipse(248, 166, 22, 8, water);
+      px.ellipse(248, 163, 10, 2, waterHi);
+
+      const step = Math.floor(walk * 6) % 2;
+      const sprite = held && !px.keys.ArrowLeft && !px.keys.ArrowRight
+        ? stand
+        : (step ? stepB : stepA);
+      const feet = GROUND - (step && sprite !== stand ? 1 : 0);
+      const sx = Math.round(x);
+      const sy = feet - sprite.h;
+      const toLampX = 250 - (sx + 8);
+      const toLampY = 42 - (sy + 8);
+      const nearLamp = Math.hypot(toLampX, toLampY) < 78;
+
+      px.shadow(sx + 8 + (nearLamp ? -6 : 4), feet - 1, 6, [14, 12, 22]);
+
+      px.mark();
+      px.rect(248, 48, 3, GROUND - 48, pole);
+      px.rect(248, 48, 1, GROUND - 48, poleHi);
+      px.orb(249, 42, 7, lampRamp, {
+        outline: "broken",
+        light: { x: -0.3, y: -1 },
+        ink: lampRamp[0],
+      });
+      px.blit(sprite, sx, sy, {
+        outline: nearLamp ? "broken" : "lit",
+        light: nearLamp
+          ? { x: toLampX, y: toLampY }
+          : { x: 70 - (sx + 8), y: 34 - (sy + 6) },
+        ink: ink,
+      });
+
+      const mirror = {
+        water: water,
+        time: walk,
+        shorten: 0.72,
+        ground: GROUND,
+      };
+      px.reflect(
+        { x: 0, y: 0, w: 320, h: GROUND },
+        Object.assign({ clip: puddle(150, 126, 30, 12) }, mirror)
+      );
+      px.reflect(
+        { x: 0, y: 0, w: 320, h: GROUND },
+        Object.assign({ clip: puddle(248, 166, 22, 8) }, mirror)
+      );
+    }
+
+    px.start(function (dt) {
+      const space = !!px.keys.Space;
+      if (space && !spaceWas) paused = !paused;
+      spaceWas = space;
+      hint.textContent = paused
+        ? "Пауза. Пробел - дальше."
+        : "Стрелки - идти. Пробел - пауза.";
+      if (paused) {
+        frame();
+        return;
+      }
+      const left = px.keys.ArrowLeft;
+      const right = px.keys.ArrowRight;
+      if (left || right) {
+        held = true;
+        x += (right ? 52 : -52) * dt;
+        walk += dt;
+      } else if (!held) {
+        walk += dt;
+        x = 150 + Math.sin(walk * 0.42) * 112;
+      }
+      if (x < 6) x = 6;
+      if (x > 300) x = 300;
+      frame();
+    });
+  </script>
+</body>
+</html>
